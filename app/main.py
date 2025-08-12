@@ -16,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from datetime import timedelta
 import os
-from .models import schemas, crud, auth, pdf_processor , openai_service, assignments
+from . import models, schemas, crud, auth, pdf_processor , openai_service, assignments
 from .database import SessionLocal , engine
 from .redis_client import get_redis
 

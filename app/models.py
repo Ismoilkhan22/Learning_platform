@@ -1,6 +1,3 @@
-"""
-# SQLAlchemy ma'lumotlar bazasi modellari
-"""
 from sqlalchemy import Column, Integer, String, ForeignKey, Enum, JSON, DateTime, Float
 from sqlalchemy.orm import relationship
 from .database import Base
@@ -24,44 +21,41 @@ class User(Base):
     email = Column(String, unique=True, index=True)
     hashed_password = Column(String)
     role = Column(Enum(UserRole), default=UserRole.user)
-    group_id = Column(Integer, ForeignKey("grou[.id"), nullable=True)
-    create_at = Column(DateTime, default=datetime.utcnow)
+    group_id = Column(Integer, ForeignKey("groups.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
     responses = relationship("UserResponse", back_populates="user")
+    feedback = relationship("Feedback", back_populates="user")
     submissions = relationship("IndependentSubmission", back_populates="user")
     group = relationship("Group", back_populates="users")
 
-
 class Group(Base):
     __tablename__ = "groups"
-    id  = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True)
     users = relationship("User", back_populates="group")
     assignments = relationship("IndependentAssignment", back_populates="group")
 
-
 class Topic(Base):
-    __tabename__ = "topics"
+    __tablename__ = "topics"
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, index=True)
     description = Column(String)
-    create_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow)
     items = relationship("TopicItem", back_populates="topic", order_by="TopicItem.order")
     tests = relationship("Test", back_populates="topic")
-    assignments = relationship("PracticalAssignment",back_populates="topic")
-
+    practical_assignments = relationship("PracticalAssignment", back_populates="topic")
 
 class TopicItem(Base):
-    __tablename__ = "topic_item"
-    id = Column(Integer, primary_key=True, idnex=True)
-    topic_id = Column(Integer, ForeignKey("topic.id"))
+    __tablename__ = "topic_items"
+    id = Column(Integer, primary_key=True, index=True)
+    topic_id = Column(Integer, ForeignKey("topics.id"))
     type = Column(Enum(TopicItemType))
-    context = Column(String)   # text , image , url , pdf url, or youtube url
+    content = Column(String)  # Text, image URL, PDF URL, or YouTube URL
     order = Column(Integer)
     topic = relationship("Topic", back_populates="items")
 
-
 class Test(Base):
-    __tablename__  = "tests"
+    __tablename__ = "tests"
     id = Column(Integer, primary_key=True, index=True)
     topic_id = Column(Integer, ForeignKey("topics.id"))
     title = Column(String)
@@ -70,19 +64,19 @@ class Test(Base):
     feedback = relationship("Feedback", back_populates="test")
 
 class Question(Base):
+    __tablename__ = "questions"
     id = Column(Integer, primary_key=True, index=True)
     test_id = Column(Integer, ForeignKey("tests.id"))
     question_text = Column(String)
     options = Column(JSON)
     correct_answer = Column(String)
     test = relationship("Test", back_populates="questions")
-    responses = relationship("UserResponse", back_populates="questions")
-
+    responses = relationship("UserResponse", back_populates="question")
 
 class UserResponse(Base):
     __tablename__ = "user_responses"
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("user.id"))
+    user_id = Column(Integer, ForeignKey("users.id"))
     question_id = Column(Integer, ForeignKey("questions.id"))
     selected_answer = Column(String)
     submitted_at = Column(DateTime, default=datetime.utcnow)
@@ -100,20 +94,21 @@ class Feedback(Base):
     test = relationship("Test", back_populates="feedback")
 
 class PracticalAssignment(Base):
-    __tablename__ = "practical_assignment"
+    __tablename__ = "practical_assignments"
     id = Column(Integer, primary_key=True, index=True)
     topic_id = Column(Integer, ForeignKey("topics.id"))
     title = Column(String)
-    topic = relationship("Topic", back_populates="assignments")
+    description = Column(String)
+    topic = relationship("Topic", back_populates="practical_assignments")
 
 class IndependentAssignment(Base):
+    __tablename__ = "independent_assignments"
     id = Column(Integer, primary_key=True, index=True)
-    group_id = Column(Integer, ForeignKey("group.id"))
+    group_id = Column(Integer, ForeignKey("groups.id"))
     title = Column(String)
-    description =Column(String)
-    group = relationship("Group", back_populates="Assignments")
+    description = Column(String)
+    group = relationship("Group", back_populates="assignments")
     submissions = relationship("IndependentSubmission", back_populates="assignment")
-
 
 class IndependentSubmission(Base):
     __tablename__ = "independent_submissions"
