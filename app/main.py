@@ -3,6 +3,7 @@
 # FastAPI ilovasi va asosiy endpointlar
 
 """
+from ctypes.wintypes import HHOOK
 from warnings import deprecated
 
 from fastapi import FastAPI, Depends, HTTPException, status, File, Form, UploadFile
@@ -15,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from datetime import timedelta
 import os
-from .models import schemas, crud, auth, pdf_processor , openai_service, assignments
+from . import models, schemas, crud, auth, pdf_processor , openai_service, assignments
 from .database import SessionLocal , engine
 from .redis_client import get_redis
 
@@ -135,6 +136,189 @@ async def create_topic_item(
 ):
     item.topic_id = topic_id
     return crud.create_topic_item(db,item)
+
+
+@app.post("/admin/uploud_pdf")
+async def upload_pdf(
+        file:UploadFile = File(...),
+        topic_id: int = Form(...),
+        order: int = Form(...),
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(auht.get_current_teacher_or_admin),
+):
+    try:
+        image_url = await pdf_processor.process_pdf(file,topic_id,s3_client)
+        for i, url in enumerate(image_url, start=order):
+            crud.create_topic_item(
+                db,
+                schemas.TopicItemCreate(
+                    topic_id=topic_id,
+                    type="image",
+                    content=url,
+                    order=i,
+                ),
+            )
+        return {"message:PDF processed and images upload successfully "}
+    except Exception as e:
+        return HTTPException(status_code=500, detail=f"pdf processing failed: {str(e)}")
+
+# test endpoints
+
+@app.get("/topics/{topic_id}/tests", response_model=List[schemas.Test])
+async  def get_tests(topic_id:int, db:Session = Depends(get_db)):
+    tests = crud.get_tests_by_topic(db, topic_id)
+    return tests
+
+@app.get("/tests/{test_id}/questions", response_model=List[schemas.Question])
+async def get_questions(test_id:int, db:Session = Depends(get_db), redis: Redis = Depends(get_redis)):
+    cache_key = f"questions:{test_id}"
+    cached_question = await redis.get(cache_key)
+    if cached_question:
+        return schemas.Question.parse_raw(cached_question)
+    questions = crud.get_question_by_test(db, test_id)
+    await redis.setex(cache_key, 3600, schemas.Question.dump_list(questions))
+    return questions
+
+@app.post("/tests/{test_id/submit}", response_model=schemas.TestResult)
+async def submit_test(
+        test_id:int,
+        submission:schemas.TestSubmission,
+        db:Session = Depends(get_db),
+        current_user:schemas.User = Depends(auth.get_current_user),
+
+):
+    correct_count = crud.calculate_test_score(db, test_id, submission)
+    total_questions = len(crud.get_question_by_test(db, test_id))
+    score = (correct_count / total_questions)*100
+    feedback = ""
+    if score <60:
+        feedback = await openai_service.generate_feedback(
+            topic_id = submission.topic_id,
+            correct_count=correct_count,
+            total_questions=total_questions,
+            incorrect_answer=[
+                answer for answer in submission.answer if not crud.is_answer_correct(db,answer)
+            ],
+            db=db,
+        )
+        return schemas.TestResult(
+            correct_count=correct_count,
+            total_questions=total_questions,
+            score=score,
+            feedback=feedback,
+            can_proceed=False,
+        )
+    crud.create_feedback(
+        db,
+        schemas.FeedbackCreate(
+            user_id=current_user.id,
+            test_id=test_id,
+            feedback_text = feedback or "Good job!",
+        ),
+    )
+    return schemas.TestResult(
+        correct_count=correct_count,
+        total_questions=total_questions,
+        score=score,
+        feedback=feedback or "Good job",
+        can_proceed = True,
+    )
+@app.post("/admin/tests", response_model=schemas.Test)
+async def create_test(
+        test:schemas.TestCreate,
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(auth.get_current_teacher_or_admin),
+):
+    return crud.create_user_test(db,test)
+
+@app.post("/admin/question", response_model=schemas.Question)
+async def create_question(
+        question: schemas.QuestionCreate,
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(auth.get_current_teacher_or_admin),
+):
+    return crud.create_user_question(db,question)
+
+
+# Assignment endpoints
+
+@app.post("/assignments/practical", response_model=schemas.PracticalAssignment)
+async def create_practical_assignment(
+        assignment: schemas.PracticalAssignmentCreate,
+        db:Session = Depends(get_db),
+        current_user: schemas.User = Depends(auth.get_current_teacher_or_admin),
+):
+    return assignments.create_practical_assignment(db,assignment)
+
+@app.post("/assignments/independent", response_model=schemas.IndependentAssignment)
+async def create_independent_assignment(
+        assignment:schemas.IndependentAssignmentCreate,
+        db:Session = Depends(get_db),
+        current_user: schemas.User = Depends(auth.get_current_teacher_or_admin),
+):
+    return assignments.create_independent_assignment(db, assignment)
+
+@app.post("/assignments/independent/{assignment_id}/submit")
+async def submit_independent_assignment(
+        assignment_id:int,
+        file: UploadFile = File(...),
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(auth.get_current_user),
+):
+    file_url = await assignments.upload_assignment_file(file, assignment_id, s3_client)
+    return assignments.create_independent_submission(
+        db, schemas.IndependentSubmissionCreate(
+            user_id=current_user.id,
+            assignment_id=assignment_id,
+            file_url=file_url,
+        )
+    )
+
+@app.post("/assignments/independent/{submission_id}/grade")
+async def grade_independent_assignment(
+        submission_id:int,
+        grade: schemas.IndependentSubmissionGrade,
+        db: Session = Depends(get_db),
+        current_user: schemas.User = Depends(auth.get_current_teacher_or_admin),
+
+):
+    return assignments.grade_independent_submission(db, submission_id, grade)
+
+# Group Endpoints
+
+@app.post("/admin/groups", response_model=schemas.Grou)
+async def create_group(
+        group:schemas.GroupCreate,
+        db:Session = Depends(get_db),
+        current_user: schemas.User = Depends(auth.get_current_admin),
+):
+    return crud.create_group(db, group)
+
+@app.post("/admin/groups/{group_id}/users")
+async def  add_user_to_group(
+        group_id:int,
+        user_id:int,
+        db:Session = Depends(get_db),
+        current_user: schemas.User = Depends(auth.get_current_admin),
+):
+    return crud.add_user_to_group(db,group_id, user_id)
+
+
+# Superadmin Endpoints
+
+
+@app.put("/admin/users/{user_id}", response_model=schemas.User)
+async def update_user(
+        user_id:int,
+        user:schemas.UserUpdate,
+        db:Session = Depends(get_db),
+        current_user:schemas.User = Depends(auth.get_current_admin)
+):
+    db_user = crud.get_user(db, user_id)
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return crud.update_user(db, user_id, user)
+
 
 
 
