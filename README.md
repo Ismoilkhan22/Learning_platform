@@ -1,2 +1,7 @@
 # Learning_platform
-bu loyiha malumotlarni onson yuklash hamda web saytda onson o'qish test ishlash hamda AI ulangan holatda bulib siz AI dan advice lar olishingiz mumkin buladi
+bunda o'quv markazi uchun crm sistema qilyapti 
+Backend: Fast api , docker, redis , asinxron python , Postgre Sql
+
+
+
+
