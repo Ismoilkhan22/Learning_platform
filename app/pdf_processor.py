@@ -1,8 +1,3 @@
-"""
-
-# PDF fayllarni qayta ishlash logikasi
-"""
-
 from fastapi import UploadFile
 import pdf2image
 from PIL import Image
@@ -10,7 +5,6 @@ import io
 import boto3
 import os
 from uuid import uuid4
-
 
 async def process_pdf(file: UploadFile, topic_id: int, s3_client) -> list:
     pdf_data = await file.read()
@@ -23,7 +17,7 @@ async def process_pdf(file: UploadFile, topic_id: int, s3_client) -> list:
         image.save(img_byte_arr, format="PNG", quality=85)
         img_byte_arr = img_byte_arr.getvalue()
 
-        file_key = f"topics/{topic_id}/page_{i + 1}_{uuid4()}.png"
+        file_key = f"topics/{topic_id}/page_{i+1}_{uuid4()}.png"
         s3_client.put_object(
             Bucket=bucket_name,
             Key=file_key,
