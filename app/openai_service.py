@@ -1,7 +1,3 @@
-"""
-# OpenAI API integratsiyasi
-"""
-
 from openai import AsyncOpenAI
 import os
 from . import schemas, crud
@@ -21,7 +17,7 @@ async def generate_feedback(topic_id: int, correct_count: int, total_questions: 
     Provide feedback on their mistakes and suggest topics to review.
     """
     response = await client.chat.completions.create(
-        model="gpt-4",
+        model="gpt-4o",
         messages=[
             {"role": "system", "content": "You are a helpful tutor providing constructive feedback."},
             {"role": "user", "content": prompt},
